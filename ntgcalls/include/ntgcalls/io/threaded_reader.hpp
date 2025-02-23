@@ -14,6 +14,7 @@ namespace ntgcalls {
         std::vector<rtc::PlatformThread> bufferThreads;
         size_t activeBuffer = 0;
         size_t activeBufferCount = 0;
+        int16_t currentLine = 0;
         std::condition_variable cv;
         std::mutex mtx;
         std::chrono::time_point<std::chrono::high_resolution_clock> lastTime;
