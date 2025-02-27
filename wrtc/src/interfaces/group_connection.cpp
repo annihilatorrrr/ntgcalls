@@ -67,7 +67,11 @@ namespace wrtc {
     }
 
     void GroupConnection::setPortAllocatorFlags(cricket::BasicPortAllocator* portAllocator) {
-        portAllocator->set_flags(portAllocator->flags());
+        uint32_t flags = portAllocator->flags();
+        flags |=
+            cricket::PORTALLOCATOR_ENABLE_IPV6 |
+            cricket::PORTALLOCATOR_ENABLE_IPV6_ON_WIFI;
+        portAllocator->set_flags(flags);
     }
 
     void GroupConnection::start() {
@@ -103,16 +107,6 @@ namespace wrtc {
             } else {
                 strong->dataChannelOpen = false;
             }
-        });
-
-        dataChannelInterface->onClosed([weak] {
-            const auto strong = std::static_pointer_cast<GroupConnection>(weak.lock());
-            if (!strong) {
-                return;
-            }
-            strong->dataChannelOpen = false;
-            RTC_LOG(LS_INFO) << "Data channel closed, restarting";
-            strong->restartDataChannel();
         });
 
         dataChannelInterface->updateIsConnected(connected);
@@ -184,7 +178,7 @@ namespace wrtc {
             const cricket::IceParameters parameters(
                 remoteIceParameters.ufrag,
                 remoteIceParameters.pwd,
-                false
+                true
             );
             strong->transportChannel->SetRemoteIceParameters(parameters);
             if (fingerprint) {
