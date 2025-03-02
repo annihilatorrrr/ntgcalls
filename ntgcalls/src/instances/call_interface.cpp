@@ -29,10 +29,10 @@ namespace ntgcalls {
                 connection = nullptr;
                 RTC_LOG(LS_VERBOSE) << "Connection destroyed";
             }
-            updateThread = nullptr;
             cancelNetworkListener();
             RTC_LOG(LS_VERBOSE) << "CallInterface destroyed";
         });
+        updateThread = nullptr;
     }
 
     bool CallInterface::pause() const {
@@ -102,6 +102,7 @@ namespace ntgcalls {
         (void) connectionChangeCallback({CallNetworkState::ConnectionState::Connecting, kind});
         connection->onConnectionChange([this, kind](const wrtc::ConnectionState state) {
             updateThread->PostTask([this, kind, state] {
+                RTC_LOG(LS_INFO) << "Starting worker";
                 if (isExiting) return;
                 switch (state) {
                 case wrtc::ConnectionState::Connecting:
@@ -121,6 +122,7 @@ namespace ntgcalls {
                 case wrtc::ConnectionState::Disconnected:
                 case wrtc::ConnectionState::Failed:
                 case wrtc::ConnectionState::Closed:
+                    RTC_LOG(LS_INFO) << "Connection closed, waiting for network thread";
                     if (connection) {
                         connection->onConnectionChange(nullptr);
                     }
@@ -135,7 +137,9 @@ namespace ntgcalls {
                 default:
                     break;
                 }
+                RTC_LOG(LS_INFO) << "Canceling network listener";
                 cancelNetworkListener();
+                RTC_LOG(LS_INFO) << "Worker finished";
             });
         });
         networkThread->PostDelayedTask([this, kind] {
