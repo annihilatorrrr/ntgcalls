@@ -13,7 +13,6 @@
 namespace ntgcalls {
 
     class CallInterface {
-        bool connected = false;
         std::atomic_bool isExiting;
 
         void cancelNetworkListener();
@@ -29,9 +28,14 @@ namespace ntgcalls {
         RemoteSource::State lastScreenState = RemoteSource::State::Inactive;
         RemoteSource::State lastMicState = RemoteSource::State::Inactive;
 
-        void setConnectionObserver(CallNetworkState::Kind kind = CallNetworkState::Kind::Normal);
+        void setConnectionObserver(
+            const std::shared_ptr<wrtc::NetworkInterface>& conn,
+            CallNetworkState::Kind kind = CallNetworkState::Kind::Normal
+        );
 
         static RemoteSource::State parseVideoState(signaling::MediaStateMessage::VideoState state);
+
+        void initNetThread();
 
     public:
         explicit CallInterface(rtc::Thread* updateThread);
@@ -53,7 +57,7 @@ namespace ntgcalls {
 
         bool unmute() const;
 
-        void setStreamSources(StreamManager::Mode mode, const MediaDescription& config) const;
+        virtual void setStreamSources(StreamManager::Mode mode, const MediaDescription& config) const;
 
         void onStreamEnd(const std::function<void(StreamManager::Type, StreamManager::Device)> &callback) const;
 

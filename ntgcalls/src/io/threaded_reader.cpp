@@ -53,7 +53,7 @@ namespace ntgcalls {
                             }
                             currentLine = 3;
                             cv.wait(lock, [this, i] {
-                                return (!running || activeBuffer == i) && enabled;
+                                return !running || (activeBuffer == i && enabled);
                             });
                             currentLine = 4;
                             if (!running) break;

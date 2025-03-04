@@ -30,18 +30,18 @@ namespace ntgcalls {
 
         connection->onDataChannelOpened([this] {
             RTC_LOG(LS_INFO) << "Data channel opened";
-            updateRemoteVideoConstraints();
+            updateRemoteVideoConstraints(connection);
         });
         streamManager->addTrack(StreamManager::Mode::Capture, StreamManager::Device::Microphone, connection.get());
         streamManager->addTrack(StreamManager::Mode::Capture, StreamManager::Device::Camera, connection.get());
         streamManager->addTrack(StreamManager::Mode::Playback, StreamManager::Device::Microphone, connection.get());
         streamManager->addTrack(StreamManager::Mode::Playback, StreamManager::Device::Camera, connection.get());
-        streamManager->addTrack(StreamManager::Mode::Playback, StreamManager::Device::Screen, connection.get());
         RTC_LOG(LS_INFO) << "AVStream settings applied";
         return Safe<wrtc::GroupConnection>(connection)->getJoinPayload();
     }
 
     std::string GroupCall::initPresentation() {
+        initNetThread();
         RTC_LOG(LS_INFO) << "Initializing screen sharing";
         if (presentationConnection) {
             RTC_LOG(LS_ERROR) << "Screen sharing already initialized";
@@ -49,8 +49,16 @@ namespace ntgcalls {
         }
         presentationConnection = std::make_shared<wrtc::GroupConnection>(true);
         presentationConnection->open();
+        presentationConnection->onDataChannelOpened([this] {
+            RTC_LOG(LS_INFO) << "Data channel opened";
+            for (const auto& [endpoint, ssrcGroup] : pendingIncomingPresentations) {
+                addIncomingVideo(endpoint, ssrcGroup);
+            }
+            updateRemoteVideoConstraints(presentationConnection);
+        });
         streamManager->addTrack(StreamManager::Mode::Capture, StreamManager::Device::Speaker, presentationConnection.get());
         streamManager->addTrack(StreamManager::Mode::Capture, StreamManager::Device::Screen, presentationConnection.get());
+        streamManager->addTrack(StreamManager::Mode::Playback, StreamManager::Device::Screen, presentationConnection.get());
         RTC_LOG(LS_INFO) << "Screen sharing initialized";
         return presentationConnection->getJoinPayload();
     }
@@ -70,39 +78,72 @@ namespace ntgcalls {
                 webrtc::JsepIceCandidate iceCandidate{std::string(), 0, rawCandidate};
                 conn->addIceCandidate(wrtc::IceCandidate(&iceCandidate));
             }
+            if (isPresentation) {
+                const auto mediaConfig = Safe<wrtc::GroupConnection>(conn)->getMediaConfig();
+                payload.media.audioPayloadTypes = mediaConfig.audioPayloadTypes;
+                payload.media.audioRtpExtensions = mediaConfig.audioRtpExtensions;
+            }
             Safe<wrtc::GroupConnection>(conn)->createChannels(payload.media);
             RTC_LOG(LS_INFO) << "Remote parameters set";
         } else {
             RTC_LOG(LS_ERROR) << "RTMP connection not supported";
             throw RTMPNeeded("RTMP connection not supported");
         }
-        setConnectionObserver(isPresentation ? CallNetworkState::Kind::Presentation : CallNetworkState::Kind::Normal);
+        setConnectionObserver(
+            conn,
+            isPresentation ? CallNetworkState::Kind::Presentation : CallNetworkState::Kind::Normal
+        );
     }
 
-    void GroupCall::updateRemoteVideoConstraints() const {
+    void GroupCall::updateRemoteVideoConstraints(const std::shared_ptr<wrtc::NetworkInterface>& conn) {
         json jsonRes = {
             {"colibriClass", "ReceiverVideoConstraints"},
             {"constraints", json::object()},
             {"defaultConstraints", {{"maxHeight", 0}}},
             {"onStageEndpoints", json::array()}
         };
-        for (const auto& endpoint : Safe<wrtc::GroupConnection>(connection)->getEndpoints()) {
+        for (const auto& endpoint : Safe<wrtc::GroupConnection>(conn)->getEndpoints()) {
             jsonRes["constraints"][endpoint] = {
                 {"maxHeight", 360},
                 {"minHeight", 180},
             };
         }
-        connection->sendDataChannelMessage(bytes::make_binary(to_string(jsonRes)));
+        conn->sendDataChannelMessage(bytes::make_binary(to_string(jsonRes)));
     }
 
-    uint32_t GroupCall::addIncomingVideo(const std::string& endpoint, const std::vector<wrtc::SsrcGroup>& ssrcGroup) const {
-        const auto ssrc = Safe<wrtc::GroupConnection>(connection)->addIncomingVideo(endpoint, ssrcGroup);
-        updateRemoteVideoConstraints();
+    uint32_t GroupCall::addIncomingVideo(const std::string& endpoint, const std::vector<wrtc::SsrcGroup>& ssrcGroup) {
+        bool isPresentation = ssrcGroup.size() == 3;
+        const auto& conn = isPresentation ? presentationConnection:connection;
+        if (!conn) {
+            if (!isPresentation) {
+                throw ConnectionError("Connection not initialized");
+            }
+            pendingIncomingPresentations[endpoint] = ssrcGroup;
+            return 0;
+        }
+        if (isPresentation && pendingIncomingPresentations.contains(endpoint)) {
+            pendingIncomingPresentations.erase(endpoint);
+        }
+        const auto ssrc = Safe<wrtc::GroupConnection>(conn)->addIncomingVideo(endpoint, ssrcGroup);
+        updateRemoteVideoConstraints(conn);
+        endpointsKind.insert({endpoint, isPresentation});
         return ssrc;
     }
 
-    bool GroupCall::removeIncomingVideo(const std::string& endpoint) const {
-        return Safe<wrtc::GroupConnection>(connection)->removeIncomingVideo(endpoint);
+    bool GroupCall::removeIncomingVideo(const std::string& endpoint) {
+        if (pendingIncomingPresentations.contains(endpoint)) {
+            pendingIncomingPresentations.erase(endpoint);
+            return true;
+        }
+        if (!endpointsKind.contains(endpoint)) {
+            return false;
+        }
+        const auto& conn = endpointsKind.at(endpoint) ? presentationConnection : connection;
+        if (!conn) {
+            throw ConnectionError("Connection not initialized");
+        }
+        endpointsKind.erase(endpoint);
+        return Safe<wrtc::GroupConnection>(conn)->removeIncomingVideo(endpoint);
     }
 
     void GroupCall::stopPresentation(const bool force) {
@@ -114,6 +155,13 @@ namespace ntgcalls {
             presentationConnection = nullptr;
         } else {
             throw ConnectionError("Presentation not initialized");
+        }
+    }
+
+    void GroupCall::setStreamSources(const StreamManager::Mode mode, const MediaDescription& config) const {
+        CallInterface::setStreamSources(mode, config);
+        if (mode == StreamManager::Mode::Playback && presentationConnection) {
+            streamManager->optimizeSources(presentationConnection.get());
         }
     }
 

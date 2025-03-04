@@ -6,8 +6,7 @@
 
 namespace ntgcalls {
     CallInterface::CallInterface(rtc::Thread* updateThread): updateThread(updateThread) {
-        networkThread = rtc::Thread::Create();
-        networkThread->Start();
+        initNetThread();
         streamManager = std::make_shared<StreamManager>(updateThread);
     }
 
@@ -97,23 +96,22 @@ namespace ntgcalls {
         }
     }
 
-    void CallInterface::setConnectionObserver(CallNetworkState::Kind kind) {
+    void CallInterface::setConnectionObserver(const std::shared_ptr<wrtc::NetworkInterface>& conn, CallNetworkState::Kind kind) {
         RTC_LOG(LS_INFO) << "Connecting...";
         (void) connectionChangeCallback({CallNetworkState::ConnectionState::Connecting, kind});
-        connection->onConnectionChange([this, kind](const wrtc::ConnectionState state) {
-            updateThread->PostTask([this, kind, state] {
+        conn->onConnectionChange([this, kind, conn](const wrtc::ConnectionState state, bool wasConnected) {
+            updateThread->PostTask([this, kind, conn, state, wasConnected] {
                 RTC_LOG(LS_INFO) << "Starting worker";
                 if (isExiting) return;
                 switch (state) {
                 case wrtc::ConnectionState::Connecting:
-                    if (connected) {
+                    if (wasConnected) {
                         RTC_LOG(LS_INFO) << "Reconnecting...";
                     }
                     break;
                 case wrtc::ConnectionState::Connected:
                     RTC_LOG(LS_INFO) << "Connection established";
-                    if (!connected && streamManager) {
-                        connected = true;
+                    if (!wasConnected && streamManager) {
                         streamManager->start();
                         RTC_LOG(LS_INFO) << "Stream started";
                         (void) connectionChangeCallback({CallNetworkState::ConnectionState::Connected, kind});
@@ -123,8 +121,8 @@ namespace ntgcalls {
                 case wrtc::ConnectionState::Failed:
                 case wrtc::ConnectionState::Closed:
                     RTC_LOG(LS_INFO) << "Connection closed, waiting for network thread";
-                    if (connection) {
-                        connection->onConnectionChange(nullptr);
+                    if (conn) {
+                        conn->onConnectionChange(nullptr);
                     }
                     if (state == wrtc::ConnectionState::Failed) {
                         RTC_LOG(LS_ERROR) << "Connection failed";
@@ -142,8 +140,8 @@ namespace ntgcalls {
                 RTC_LOG(LS_INFO) << "Worker finished";
             });
         });
-        networkThread->PostDelayedTask([this, kind] {
-            if (!connected) {
+        networkThread->PostDelayedTask([this, kind, conn] {
+            if (!conn->isConnected()) {
                 RTC_LOG(LS_ERROR) << "Connection timeout";
                 (void) connectionChangeCallback({CallNetworkState::ConnectionState::Timeout, kind});
             }
@@ -160,5 +158,10 @@ namespace ntgcalls {
             return RemoteSource::State::Suspended;
         }
         return RemoteSource::State::Inactive;
+    }
+
+    void CallInterface::initNetThread() {
+        networkThread = rtc::Thread::Create();
+        networkThread->Start();
     }
 } // ntgcalls

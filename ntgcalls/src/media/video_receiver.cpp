@@ -7,7 +7,7 @@
 
 namespace ntgcalls {
     VideoReceiver::~VideoReceiver() {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         sink = nullptr;
         frameCallback = nullptr;
     }
@@ -28,7 +28,7 @@ namespace ntgcalls {
             if (const auto sink = weakSink.lock(); !sink) {
                 return;
             }
-            std::lock_guard<std::mutex> lock(mutex);
+            std::lock_guard lock(mutex);
             uint16_t newWidth, newHeight;
             if (description->width <= 0) {
                 newWidth = static_cast<int16_t>(frame->width());
@@ -68,7 +68,7 @@ namespace ntgcalls {
             memcpy(yuv.get() + yScaledSize + uvScaledSize, vScaledPlane.get(), uvScaledSize);
 
             (void) frameCallback(ssrc, std::move(yuv), totalSize, {
-                0,
+                frame->timestamp_us(),
                 frame->rotation(),
                 newWidth,
                 newHeight
