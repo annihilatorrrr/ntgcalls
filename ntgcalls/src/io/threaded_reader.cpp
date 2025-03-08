@@ -13,6 +13,7 @@ namespace ntgcalls {
 
     void ThreadedReader::close() {
         RTC_LOG(LS_VERBOSE) << "ThreadedReader closing";
+        dataCallback = nullptr;
         exiting = true;
         const bool wasRunning = running;
         if (running) {

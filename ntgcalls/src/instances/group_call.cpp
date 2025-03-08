@@ -49,11 +49,14 @@ namespace ntgcalls {
         }
         presentationConnection = std::make_shared<wrtc::GroupConnection>(true);
         presentationConnection->open();
+        streamManager->optimizeSources(presentationConnection.get());
         presentationConnection->onDataChannelOpened([this] {
             RTC_LOG(LS_INFO) << "Data channel opened";
-            for (const auto& [endpoint, ssrcGroup] : pendingIncomingPresentations) {
-                addIncomingVideo(endpoint, ssrcGroup);
-            }
+            updateThread->PostTask([this]{
+                for (auto x = pendingIncomingPresentations; const auto& [endpoint, ssrcGroup] : x) {
+                    addIncomingVideo(endpoint, ssrcGroup);
+                }
+            });
             updateRemoteVideoConstraints(presentationConnection);
         });
         streamManager->addTrack(StreamManager::Mode::Capture, StreamManager::Device::Speaker, presentationConnection.get());

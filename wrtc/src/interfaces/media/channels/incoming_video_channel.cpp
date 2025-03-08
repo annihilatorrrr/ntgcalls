@@ -14,7 +14,7 @@ namespace wrtc {
         webrtc::RtpTransport* rtpTransport,
         std::vector<SsrcGroup> ssrcGroups,
         rtc::UniqueRandomIdGenerator *randomIdGenerator,
-        const std::vector<webrtc::SdpVideoFormat>& availableVideoFormats,
+        const std::vector<cricket::Codec>& codecs,
         rtc::Thread* workerThread,
         rtc::Thread* networkThread,
         std::weak_ptr<RemoteVideoSink> remoteVideoSink
@@ -38,17 +38,7 @@ namespace wrtc {
             channel->SetRtpTransport(rtpTransport);
         });
 
-        auto payloadTypes = OutgoingVideoFormat::assignPayloadTypes(availableVideoFormats);
-        std::vector<cricket::Codec> codecs;
-        for (const auto &payloadType : payloadTypes) {
-            codecs.push_back(payloadType.videoCodec);
-            if (payloadType.rtxCodec) {
-                codecs.push_back(payloadType.rtxCodec.value());
-            }
-        }
-
         auto outgoingVideoDescription = std::make_unique<cricket::VideoContentDescription>();
-        outgoingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kAudioLevelUri, 1));
         outgoingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kAbsSendTimeUri, 2));
         outgoingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kTransportSequenceNumberUri, 3));
         outgoingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kVideoRotationUri, 13));
@@ -77,7 +67,7 @@ namespace wrtc {
             videoRecvStreamParams.ssrc_groups.push_back(parsedGroup);
         }
 
-        if (_ssrc == 0 &&  ssrcGroups.size() == 1) {
+        if (_ssrc == 0 && ssrcGroups.size() == 1) {
             _ssrc = ssrcGroups[0].ssrcs[0];
         }
         videoRecvStreamParams.ssrcs = allSsrcs;
@@ -86,7 +76,6 @@ namespace wrtc {
         videoRecvStreamParams.set_stream_ids({ streamId });
 
         auto incomingVideoDescription = std::make_unique<cricket::VideoContentDescription>();
-        incomingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kAudioLevelUri, 1));
         incomingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kAbsSendTimeUri, 2));
         incomingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kTransportSequenceNumberUri, 3));
         incomingVideoDescription->AddRtpHeaderExtension(webrtc::RtpExtension(webrtc::RtpExtension::kVideoRotationUri, 13));
