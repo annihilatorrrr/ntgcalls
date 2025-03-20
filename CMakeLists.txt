@@ -7,6 +7,7 @@ endif ()
 include(ExternalProject)
 
 set(BOOST_LIBS filesystem)
+set(X11_LIBS X11 X11-xcb Xcomposite Xdamage Xext Xfixes Xrandr Xrender Xtst)
 
 option(STATIC_BUILD "Build static libraries" ON)
 option(USE_LIBCXX   "Use libc++" ON)
@@ -32,6 +33,7 @@ get_filename_component(props_loc    "version.properties" REALPATH)
 
 include(cmake/FindWebRTC.cmake)
 include(cmake/FindLibCXX.cmake)
+include(cmake/FindX11.cmake)
 include(cmake/FindBoost.cmake)
 include(cmake/FindOpenH264.cmake)
 include(cmake/FindFFmpeg.cmake)
