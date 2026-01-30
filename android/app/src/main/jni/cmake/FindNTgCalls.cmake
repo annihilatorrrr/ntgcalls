@@ -9,6 +9,7 @@ set(_DIRS
     ${NTGCALLS_INCLUDE_DIR}
     ${WRTC_INCLUDE_DIR}
     ${DEPS_DIR}/json/include
+    ${DEPS_DIR}/boost/src/include
     ${DEPS_DIR}/ffmpeg/src/include
     ${WEBRTC_INCLUDE}
     ${WEBRTC_INCLUDE}/third_party/abseil-cpp
